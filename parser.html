@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIX Message Parser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .input-section, .output-section {
+            flex: 1;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .output {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            min-height: 200px;
+        }
+        .tag {
+            color: #2c3e50;
+            font-weight: bold;
+        }
+        .value {
+            color: #e74c3c;
+        }
+        .description {
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        .field {
+            margin-bottom: 8px;
+            padding-left: 15px;
+            border-left: 3px solid #3498db;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .message-type {
+            background-color: #3498db;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>FIX Message Parser (FIX 4.4)</h1>
+    
+    <div class="container">
+        <div class="input-section">
+            <h2>Input FIX Message</h2>
+            <textarea id="fixInput" placeholder="Paste your FIX message here (e.g., 8=FIX.4.4|9=122|35=D|...)"></textarea>
+            <button id="parseBtn">Parse Message</button>
+            <button id="exampleBtn">Load Example</button>
+        </div>
+        
+        <div class="output-section">
+            <h2>Parsed Output</h2>
+            <div id="output" class="output">
+                <p>Parsed message will appear here...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // FIX 4.4 Data Dictionary (simplified version)
+        const fix44 = {
+            "header": {
+                "8": { "name": "BeginString", "type": "String" },
+                "9": { "name": "BodyLength", "type": "Length" },
+                "35": { "name": "MsgType", "type": "String",
+                    "values": {
+                        "D": "New Order - Single",
+                        "8": "Execution Report",
+                        "F": "Order Cancel Request",
+                        "AE": "Trade Capture Report"
+                    }},
+                "49": { "name": "SenderCompID", "type": "String" },
+                "56": { "name": "TargetCompID", "type": "String" },
+                "34": { "name": "MsgSeqNum", "type": "SeqNum" },
+                "52": { "name": "SendingTime", "type": "UTCTimestamp" }
+            },
+            "messages": {
+                "D": { // New Order Single
+                    "11": { "name": "ClOrdID", "type": "String" },
+                    "55": { "name": "Symbol", "type": "String" },
+                    "54": { "name": "Side", "type": "Char",
+                        "values": {
+                            "1": "Buy",
+                            "2": "Sell",
+                            "3": "Buy Minus",
+                            "4": "Sell Plus",
+                            "5": "Sell Short",
+                            "6": "Sell Short Exempt"
+                        }},
+                    "60": { "name": "TransactTime", "type": "UTCTimestamp" },
+                    "40": { "name": "OrdType", "type": "Char",
+                        "values": {
+                            "1": "Market",
+                            "2": "Limit",
+                            "3": "Stop",
+                            "4": "Stop Limit"
+                        }},
+                    "38": { "name": "OrderQty", "type": "Qty" },
+                    "44": { "name": "Price", "type": "Price" }
+                },
+                "8": { // Execution Report
+                    "6": { "name": "AvgPx", "type": "Price" },
+                    "14": { "name": "CumQty", "type": "Qty" },
+                    "17": { "name": "ExecID", "type": "String" },
+                    "37": { "name": "OrderID", "type": "String" },
+                    "39": { "name": "OrdStatus", "type": "Char",
+                        "values": {
+                            "0": "New",
+                            "1": "Partially filled",
+                            "2": "Filled",
+                            "3": "Done for day",
+                            "4": "Canceled",
+                            "5": "Replaced",
+                            "6": "Pending Cancel",
+                            "7": "Stopped",
+                            "8": "Rejected",
+                            "9": "Suspended",
+                            "A": "Pending New",
+                            "B": "Calculated",
+                            "C": "Expired",
+                            "D": "Accepted for Bidding",
+                            "E": "Pending Replace"
+                        }},
+                    "150": { "name": "ExecType", "type": "Char",
+                        "values": {
+                            "0": "New",
+                            "1": "Partial fill",
+                            "2": "Fill",
+                            "3": "Done for day",
+                            "4": "Canceled",
+                            "5": "Replace",
+                            "6": "Pending Cancel",
+                            "7": "Stopped",
+                            "8": "Rejected",
+                            "9": "Suspended",
+                            "A": "Pending New",
+                            "B": "Calculated",
+                            "C": "Expired",
+                            "D": "Restated",
+                            "E": "Pending Replace",
+                            "F": "Trade",
+                            "G": "Trade Correct",
+                            "H": "Trade Cancel",
+                            "I": "Order Status"
+                        }},
+                    "151": { "name": "LeavesQty", "type": "Qty" }
+                }
+            },
+            "trailer": {
+                "10": { "name": "CheckSum", "type": "String" }
+            }
+        };
+
+        document.getElementById('parseBtn').addEventListener('click', parseFixMessage);
+        document.getElementById('exampleBtn').addEventListener('click', loadExample);
+
+        function loadExample() {
+            const exampleMsg = "8=FIX.4.4|9=122|35=D|49=BUY1|56=SELL1|34=237|52=20240220-10:30:45.123|11=ORD10001|55=AAPL|54=1|60=20240220-10:30:45.123|40=2|38=100|44=150.25|10=123";
+            document.getElementById('fixInput').value = exampleMsg;
+        }
+
+        function parseFixMessage() {
+            const fixInput = document.getElementById('fixInput').value.trim();
+            if (!fixInput) {
+                alert("Please enter a FIX message to parse");
+                return;
+            }
+
+            try {
+                // Normalize the message (replace SOH characters if present)
+                const normalizedMsg = fixInput.replace(/\x01/g, '|').replace(/\u0001/g, '|');
+                
+                // Parse the message into key-value pairs
+                const fields = normalizedMsg.split('|').map(field => {
+                    const [tag, value] = field.split('=');
+                    return { tag, value };
+                });
+
+                // Identify message type
+                const msgTypeField = fields.find(f => f.tag === '35');
+                const msgType = msgTypeField ? msgTypeField.value : 'UNKNOWN';
+
+                // Build the output HTML
+                let outputHtml = '';
+                
+                // Add message type header
+                const msgTypeName = fix44.header["35"].values[msgType] || `Unknown (${msgType})`;
+                outputHtml += `<div class="message-type">Message Type: ${msgTypeName}</div>`;
+                
+                // Process header fields
+                outputHtml += '<h3>Header</h3>';
+                fields.filter(f => fix44.header[f.tag]).forEach(field => {
+                    outputHtml += formatField(field, fix44.header);
+                });
+
+                // Process body fields
+                if (fix44.messages[msgType]) {
+                    outputHtml += '<h3>Body</h3>';
+                    fields.filter(f => fix44.messages[msgType][f.tag]).forEach(field => {
+                        outputHtml += formatField(field, fix44.messages[msgType]);
+                    });
+                }
+
+                // Process unrecognized fields
+                const unrecognizedFields = fields.filter(f => 
+                    !fix44.header[f.tag] && 
+                    (!fix44.messages[msgType] || !fix44.messages[msgType][f.tag]) &&
+                    !fix44.trailer[f.tag]
+                );
+
+                if (unrecognizedFields.length > 0) {
+                    outputHtml += '<h3>Other Fields</h3>';
+                    unrecognizedFields.forEach(field => {
+                        outputHtml += formatField(field, null);
+                    });
+                }
+
+                // Process trailer fields
+                outputHtml += '<h3>Trailer</h3>';
+                fields.filter(f => fix44.trailer[f.tag]).forEach(field => {
+                    outputHtml += formatField(field, fix44.trailer);
+                });
+
+                document.getElementById('output').innerHTML = outputHtml;
+            } catch (error) {
+                document.getElementById('output').innerHTML = 
+                    `<p style="color:red">Error parsing FIX message: ${error.message}</p>`;
+                console.error(error);
+            }
+        }
+
+        function formatField(field, section) {
+            const tagInfo = section ? section[field.tag] : null;
+            const name = tagInfo ? tagInfo.name : `Tag ${field.tag}`;
+            let value = field.value;
+            let description = '';
+            
+            if (tagInfo && tagInfo.values && tagInfo.values[value]) {
+                description = tagInfo.values[value];
+            }
+            
+            return `
+                <div class="field">
+                    <span class="tag">${name} (${field.tag})</span>: 
+                    <span class="value">${value}</span>
+                    ${description ? `<span class="description"> - ${description}</span>` : ''}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
